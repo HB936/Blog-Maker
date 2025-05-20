@@ -16,7 +16,14 @@ export default function Home() {
     }, []);
 
     const openToast = (msg, flag) => {
-        toast(msg, { type: flag ? 'success' : 'error' });
+        toast(msg, {
+            type: flag ? 'success' : 'error',
+            autoClose: 3000,     // Add this line to each toast call
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true
+        });
     };
 
     const deleteHandler = (id) => {
@@ -66,27 +73,27 @@ export default function Home() {
             <div>
                 <div className={`fixed inset-0 bg-black bg-opacity-25 ${editWindow ? 'flex' : 'hidden'} items-center justify-center z-50`}>
                     <div className="w-[600px] relative">
-                        <EditWrapper 
-                            setEditWindow={setEditWindow} 
-                            fetchBlogs={fetchBlogs} 
-                            setEditData={setEditData} 
-                            editData={editData} 
-                            blogId={blogId} 
+                        <EditWrapper
+                            setEditWindow={setEditWindow}
+                            fetchBlogs={fetchBlogs}
+                            setEditData={setEditData}
+                            editData={editData}
+                            blogId={blogId}
                         />
-                        <div 
-                            onClick={handleCloseEditWindow} 
+                        <div
+                            onClick={handleCloseEditWindow}
                             className='cursor-pointer absolute w-[40px] h-[40px] flex ps-[15px] items-center bg-red-400 top-0 right-0 rounded-full'
                         >
                             X
                         </div>
                     </div>
                 </div>
-                <BlogTable 
-                    blogs={blogs} 
-                    setEditWindow={setEditWindow} 
-                    setBlogId={setBlogId} 
-                    setEditData={setEditData} 
-                    deleteHandler={deleteHandler} 
+                <BlogTable
+                    blogs={blogs}
+                    setEditWindow={setEditWindow}
+                    setBlogId={setBlogId}
+                    setEditData={setEditData}
+                    deleteHandler={deleteHandler}
                 />
             </div>
         </>
@@ -132,18 +139,18 @@ function BlogTable(props) {
                                     {new Date(blog.updatedAt).toLocaleDateString()}
                                 </td>
                                 <td className="py-3 px-6 align-top flex gap-4">
-                                    <button 
-                                        onClick={() => { 
-                                            props.setEditWindow(true); 
-                                            props.setEditData(blog); 
+                                    <button
+                                        onClick={() => {
+                                            props.setEditWindow(true);
+                                            props.setEditData(blog);
                                             props.setBlogId(blog._id);
-                                        }} 
+                                        }}
                                         className='bg-blue-200 p-2 rounded cursor-pointer'
                                     >
                                         Edit
                                     </button>
-                                    <button 
-                                        onClick={() => props.deleteHandler(blog._id)} 
+                                    <button
+                                        onClick={() => props.deleteHandler(blog._id)}
                                         className='bg-red-200 p-2 rounded cursor-pointer'
                                     >
                                         Delete

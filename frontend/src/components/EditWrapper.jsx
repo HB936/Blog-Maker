@@ -11,16 +11,15 @@ export default function EditWrapper(props) {
     });
     const [isTyping, setIsTyping] = useState(false);
     const [draftId, setDraftId] = useState(null);
-    const [originalPublishedId, setOriginalPublishedId] = useState(null);
     const typingTimeoutRef = useRef(null);
     const autoSaveIntervalRef = useRef(null);
-    
+
     // Required for saveDraft to access the latest formData
     const formDataRef = useRef(formData);
     useEffect(() => {
         formDataRef.current = formData;
     }, [formData]);
-    
+
     // Initialize form data when edit data changes
     useEffect(() => {
         if (props.editData) {
@@ -30,14 +29,10 @@ export default function EditWrapper(props) {
                 tags: Array.isArray(props.editData.tags) ? props.editData.tags.join(', ') : ''
             });
             setStatus(props.editData.status || '');
-            
+
             // If we're editing a draft, store its ID
             if (props.editData.status === 'draft') {
                 setDraftId(props.blogId);
-            }
-            // If we're editing a published blog, store its ID as original
-            else if (props.editData.status === 'published') {
-                setOriginalPublishedId(props.blogId);
             }
         }
     }, [props.editData, props.blogId]);
@@ -49,15 +44,15 @@ export default function EditWrapper(props) {
             ...prev,
             [name]: value
         }));
-        
+
         // Set typing flag to true
         setIsTyping(true);
-        
+
         // Clear any existing timeout
         if (typingTimeoutRef.current) {
             clearTimeout(typingTimeoutRef.current);
         }
-        
+
         // Set new timeout to save after 5 seconds of inactivity
         typingTimeoutRef.current = setTimeout(() => {
             setIsTyping(false);
@@ -69,10 +64,10 @@ export default function EditWrapper(props) {
     const saveDraft = async () => {
         // Get current form data from ref to ensure we have the latest values
         const currentFormData = formDataRef.current;
-        
+
         // Only save if there's content to save
         if (!currentFormData.title && !currentFormData.content) return;
-        
+
         const data = {
             title: currentFormData.title,
             content: currentFormData.content,
@@ -84,45 +79,26 @@ export default function EditWrapper(props) {
         };
 
         try {
-            // If we're editing a published blog, create a draft version and hide original
-            if (originalPublishedId && !draftId) {
-                // First, hide the original published blog - do this BEFORE creating draft
-                await axios.patch(`http://localhost:5000/api/blog/update/${originalPublishedId}`, {
-                    status: 'archived' // Using 'archived' instead of 'hidden' if that's what your API expects
-                });
-                
-                // Now create the draft version
+            // If we're editing a published blog, create a draft version
+            if (props.editData?.status === 'published' && !draftId) {
                 const response = await axios.post('http://localhost:5000/api/blog/save-draft', {
                     ...data,
-                    originalBlogId: originalPublishedId // Connect to original published blog
+                    originalBlogId: props.blogId // Connect to original published blog
                 });
-                
+
                 if (response.data.id) {
                     setDraftId(response.data.id);
-                    
-                    // Refresh the blogs list to reflect changes
-                    props.fetchBlogs();
                 }
-            } 
+            }
             // If we already have a draft ID, update it
             else if (draftId) {
                 await axios.patch(`http://localhost:5000/api/blog/update/${draftId}`, data);
-                
-                // Make sure original is still hidden
-                if (originalPublishedId) {
-                    await axios.patch(`http://localhost:5000/api/blog/update/${originalPublishedId}`, {
-                        status: 'archived'
-                    });
-                    
-                    // Refresh blogs to reflect changes
-                    props.fetchBlogs();
-                }
             }
             // If we're editing an existing draft, update it
             else if (props.blogId) {
                 await axios.patch(`http://localhost:5000/api/blog/update/${props.blogId}`, data);
             }
-            
+
             // Show toast notification for auto-save
             toast.success("Auto-saved as draft", {
                 position: "bottom-right",
@@ -142,7 +118,7 @@ export default function EditWrapper(props) {
         autoSaveIntervalRef.current = setInterval(() => {
             saveDraft();
         }, 30000);
-        
+
         // Cleanup function
         return () => {
             if (typingTimeoutRef.current) {
@@ -157,7 +133,7 @@ export default function EditWrapper(props) {
     const openToast = (msg, flag) => {
         toast(msg, { type: flag ? 'success' : 'error' });
     }
-    
+
     const submitHandler = async (e) => {
         e.preventDefault();
 
@@ -177,104 +153,40 @@ export default function EditWrapper(props) {
         }
 
         try {
-            // If we're saving as draft and this is a published blog
-            if (status === 'draft' && originalPublishedId) {
-                // First, hide/archive the original published blog
-                await axios.patch(`http://localhost:5000/api/blog/update/${originalPublishedId}`, {
-                    status: 'archived' // Using 'archived' instead of 'hidden' if that's what your API expects
-                });
-                
-                // Create a new draft if one doesn't exist yet
-                if (!draftId) {
-                    const draftResponse = await axios.post('http://localhost:5000/api/blog/save-draft', {
-                        ...data, 
-                        originalBlogId: originalPublishedId
-                    });
-                    
-                    if (draftResponse.data.id) {
-                        // Success message
-                        openToast("Saved as draft. Original published version is now archived.", 1);
-                        
-                        // Reset and close the edit window
-                        props.setEditData(null);
-                        props.fetchBlogs();
-                        props.setEditWindow(false);
-                        return;
-                    }
-                } else {
-                    // Update existing draft
-                    const response = await axios.patch(`http://localhost:5000/api/blog/update/${draftId}`, data);
-                    
-                    if (response.data.status === 1) {
-                        // Reset and close the edit window
-                        props.setEditData(null);
-                        props.fetchBlogs();
-                        props.setEditWindow(false);
-                        return;
-                    }
-                }
-            } 
-            // If publishing an existing draft that's linked to a published blog
-            else if (status === 'published' && draftId && originalPublishedId) {
-                // Update the content of the original published blog instead of the draft
-                const response = await axios.patch(`http://localhost:5000/api/blog/update/${originalPublishedId}`, {
-                    ...data,
-                    status: 'published' // Ensure it's published again
-                });
-                
-                if (response.data.status === 1) {
-                    // Delete the draft as it's no longer needed
+            const response = await axios.patch(`http://localhost:5000/api/blog/update/${props.blogId}`, data);
+
+            if (response.data.status === 1) {
+                // If publishing, remove any auto-saved drafts
+                if (status === 'published' && draftId && draftId !== props.blogId) {
                     try {
                         await axios.delete(`http://localhost:5000/api/blog/delete-draft/${draftId}`);
                     } catch (error) {
                         console.error("Error removing draft after publishing:", error);
                     }
-                    
-                    // Reset and close the edit window
-                    props.setEditData(null);
-                    props.fetchBlogs();
-                    props.setEditWindow(false);
-                    return;
                 }
+
+                // Reset and close the edit window
+                props.setEditData(null);
+                props.fetchBlogs();
+                props.setEditWindow(false);
             }
-            // Regular update for other cases
-            else {
-                const response = await axios.patch(`http://localhost:5000/api/blog/update/${props.blogId}`, data);
-                
-                if (response.data.status === 1) {
-                    // If publishing, remove any auto-saved drafts
-                    if (status === 'published' && draftId && draftId !== props.blogId) {
-                        try {
-                            await axios.delete(`http://localhost:5000/api/blog/delete-draft/${draftId}`);
-                        } catch (error) {
-                            console.error("Error removing draft after publishing:", error);
-                        }
-                    }
-                    
-                    // Reset and close the edit window
-                    props.setEditData(null);
-                    props.fetchBlogs();
-                    props.setEditWindow(false);
-                }
-                
-                openToast(response.data.msg, response.data.status);
-            }
+
+            openToast(response.data.msg, response.data.status);
         } catch (error) {
-            console.error("Error in submit handler:", error);
             openToast("Internal Server Error", 0);
         }
     }
-    
+
     return (
         <div>
             <ToastContainer />
+
             <form onSubmit={submitHandler} className="max-w-xl my-7 mx-auto p-6 bg-white rounded shadow-md space-y-6">
-                {originalPublishedId && (
-                    <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4">
-                        <p>You are editing a published blog. Saving as draft will archive the original published version.</p>
-                    </div>
-                )}
-                
+                <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4 rounded">
+                    <p className="font-bold">Auto-save enabled</p>
+                    <p>Your content will automatically save as a draft after 5 seconds of inactivity and every 30 seconds.</p>
+                    <p>Current status: <span className={status === 'published' ? 'text-green-600 font-bold' : 'text-blue-600 font-bold'}>{status || 'Not set'}</span></p>
+                </div>
                 <div>
                     <label htmlFor="title" className="block text-gray-700 font-semibold mb-2">
                         Title
@@ -324,7 +236,7 @@ export default function EditWrapper(props) {
                     <button
                         type="submit"
                         onClick={() => setStatus('published')}
-                        className="bg-green-500 text-white font-semibold px-6 py-2 rounded hover:bg-green-600"
+                        className={`${status === 'published' ? 'bg-green-600' : 'bg-green-500'} text-white font-semibold px-6 py-2 rounded hover:bg-green-600`}
                     >
                         Publish Blog
                     </button>
@@ -332,17 +244,11 @@ export default function EditWrapper(props) {
                     <button
                         type="submit"
                         onClick={() => setStatus('draft')}
-                        className="bg-blue-500 text-white font-semibold px-6 py-2 rounded hover:bg-blue-600"
+                        className={`${status === 'draft' ? 'bg-blue-600' : 'bg-blue-500'} text-white font-semibold px-6 py-2 rounded hover:bg-blue-600`}
                     >
                         Save as Draft
                     </button>
                 </div>
-
-                {isTyping && (
-                    <div className="text-gray-500 text-sm text-right mt-2">
-                        Auto-save will occur after typing stops...
-                    </div>
-                )}
             </form>
         </div>
     )
